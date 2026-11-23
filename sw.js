@@ -1,13 +1,13 @@
 // Network-first cache for the app shell so the app opens offline.
 // Spreadsheet requests (other origins) are never cached here; the app keeps its own copy.
 // the build number is replaced on every deploy, so each release gets a fresh cache
-const CACHE = 'selfcare-202611231955-v4';
+const CACHE = 'selfcare-202611232005-v5';
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'js/app.js', 'js/human.js', 'js/sheet.js', 'js/demo.js',
   'vendor/three.module.min.js',
-  'icons/icon.svg',
-  'icons/apple-touch-icon.png',
+  'icons/heart.svg',
+  'icons/heart-180.png',
 ];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
