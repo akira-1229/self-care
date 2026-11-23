@@ -6,6 +6,6 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" fill="url(#bg)"/>
-  <path d="M256 356 C198 302 112 238 112 168 C112 120 148 88 192 88 C224 88 246 106 256 132 C266 106 288 88 320 88 C364 88 400 120 400 168 C400 238 314 302 256 356 Z" fill="#d64545"/>
-  <text x="256" y="448" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="57" font-weight="600" letter-spacing="5" fill="#e6eef7">self care</text>
+  <path transform="translate(256 222) scale(1.04) translate(-256 -222)" d="M256 356 C198 302 112 238 112 168 C112 120 148 88 192 88 C224 88 246 106 256 132 C266 106 288 88 320 88 C364 88 400 120 400 168 C400 238 314 302 256 356 Z" fill="#d64545"/>
+  <text x="263" y="446" text-anchor="middle" font-family="'DejaVu Sans Mono', Menlo, Consolas, 'Courier New', monospace" font-size="62" font-weight="700" letter-spacing="14" fill="#ffffff">self care</text>
 </svg>
