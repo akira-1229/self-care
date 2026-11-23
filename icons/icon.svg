@@ -1,17 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="fig" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#7dd3fc"/>
-      <stop offset="1" stop-color="#38bdf8"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.5">
-      <stop offset="0" stop-color="#1e3a5f"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16233d"/>
       <stop offset="1" stop-color="#0b1220"/>
-    </radialGradient>
+    </linearGradient>
   </defs>
-  <rect width="512" height="512" fill="url(#glow)"/>
-  <g fill="url(#fig)">
-    <circle cx="256" cy="150" r="46"/>
-    <path d="M196 214h120a34 34 0 0 1 34 34v86a18 18 0 0 1-36 0v-62h-8v168a22 22 0 0 1-44 0v-96h-12v96a22 22 0 0 1-44 0V272h-8v62a18 18 0 0 1-36 0v-86a34 34 0 0 1 34-34z"/>
-  </g>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <path d="M256 356 C198 302 112 238 112 168 C112 120 148 88 192 88 C224 88 246 106 256 132 C266 106 288 88 320 88 C364 88 400 120 400 168 C400 238 314 302 256 356 Z" fill="#d64545"/>
+  <text x="256" y="448" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="57" font-weight="600" letter-spacing="5" fill="#e6eef7">self care</text>
 </svg>
