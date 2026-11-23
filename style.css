@@ -326,3 +326,18 @@ input.switch:checked::after { transform: translateX(20px); }
 .pr-count { text-align: right; font-size: 12px; color: var(--fg-dim); }
 .stats b { font-size: 18px; }
 .swatches { flex-wrap: wrap; }
+
+/* ---- writing back: add / edit / delete ---- */
+.add-btn { width: 100%; margin: 0 0 10px; border-style: dashed; color: var(--fg); }
+.back-link { border: 0; background: none; color: var(--accent); font-size: 14px; font-weight: 600; padding: 4px 0 10px; cursor: pointer; }
+.item-tools { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.mini { min-height: 32px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--card-2); color: var(--fg); font-size: 13px; font-weight: 600; cursor: pointer; }
+.mini.danger { color: #ff7a7f; border-color: rgba(255, 90, 95, 0.4); }
+.field select, .field textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 9px 10px; font-size: 16px; color: var(--fg);
+  background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; font-family: inherit;
+}
+.field textarea { resize: vertical; }
+.field input + input { margin-top: 6px; }
+.field input[hidden] { display: none; }
+.rec-form .btn:disabled { opacity: 0.6; }

@@ -1,4 +1,4 @@
-import { HumanViewer } from './human.js';
+import { HumanViewer, FACE_PARTS } from './human.js';
 import { PARTS, OTHER, buildUrl, fetchBook, interpret, parseCSV } from './sheet.js';
 import { DEMO_CSVS } from './demo.js';
 
@@ -9,10 +9,10 @@ const CACHE_KEY = 'selfcare.cache.v1';
 const DEFAULT_SHEET = 'https://docs.google.com/spreadsheets/d/1-PNYKR85-ep6DJwejzr51eMBJ29sNvUYmmQT6PcopwI/edit';
 const DEFAULTS = {
   sheet: DEFAULT_SHEET, sheetName: '', interval: 5, appName: 'セルフケア',
-  skin: '#f0c4a0', hair: '#2a1c15', shirt: '#4a7fa8',
+  figure: '#dfe6ef', hair: '#3a4252', gasUrl: '', gasToken: '',
   brightness: 1, accent: '#4f8cff', panelStyle: 'glass', fontSize: 'm', autoRotate: true, rotateSpeed: 0.8,
 };
-const HINT = 'ドラッグで回転 ・ 部位をタップで記録';
+const HINT = 'ドラッグで回転 ・ 髪／顔／身体をタップで記録';
 
 // ---------- storage (wrapped: private mode can throw) ----------
 const store = {
@@ -38,14 +38,15 @@ function loadSettings() {
 
 let settings = loadSettings();
 let data = null; // interpret() result
+let dataSource = null; // 'sheet' | 'cache' | 'demo'
 let currentView = null; // { type: 'part'|'all'|'summary'|'settings', id }
 let timer = null;
 let lastSync = null;
 let loading = false;
 
 const viewer = new HumanViewer($('#viewer'), {
-  colors: { skin: settings.skin, hair: settings.hair, shirt: settings.shirt },
-  onSelect: (id) => (id ? openPart(id) : closePanel()),
+  colors: { figure: settings.figure, hair: settings.hair },
+  onSelect: (id) => (id === 'face' ? openFace() : id ? openPart(id) : closePanel()),
 });
 if (/[?&]debug\b/.test(location.search)) window.__viewer = viewer;
 viewer.onInteract = () => $('#hint').classList.add('hide');
@@ -62,14 +63,24 @@ function toast(msg) {
 
 // ---------- data ----------
 const demoTables = () => DEMO_CSVS.map(parseCSV);
-function apply(tables, source) {
-  data = interpret(tables);
+function apply(tables, source, sheets) {
+  data = interpret(tables, sheets);
+  dataSource = source;
   if (currentView) rerenderPanel();
   $('#demoBanner').hidden = source !== 'demo';
 }
 
-async function refresh({ manual = false } = {}) {
-  if (loading) return;
+// years: year sheets to re-read even on a routine refresh (after writing to them)
+let loadingP = null;
+async function refresh(opts = {}) {
+  if (loadingP) {
+    if (!opts.years) return loadingP;
+    await loadingP.catch(() => {}); // a write must be followed by a fresh read
+  }
+  loadingP = doRefresh(opts);
+  try { return await loadingP; } finally { loadingP = null; }
+}
+async function doRefresh({ manual = false, years = [] } = {}) {
   const url = buildUrl(settings.sheet, settings.sheetName);
   if (!url) {
     apply(demoTables(), 'demo');
@@ -80,15 +91,15 @@ async function refresh({ manual = false } = {}) {
   loading = true;
   $('#titleCard').classList.add('loading');
   try {
-    const tables = await fetchBook(url, { full: manual });
-    apply(tables, 'sheet');
+    const tables = await fetchBook(url, { full: manual, years });
+    apply(tables, 'sheet', tables.sheets);
     lastSync = new Date();
-    store.set(CACHE_KEY, { url, tables, at: lastSync.toISOString() });
+    store.set(CACHE_KEY, { url, tables, sheets: tables.sheets, at: lastSync.toISOString() });
     $('#errorBanner').hidden = true;
   } catch (e) {
     const cache = store.get(CACHE_KEY, null);
     if (!data && cache && cache.url === url && Array.isArray(cache.tables)) {
-      apply(cache.tables, 'cache');
+      apply(cache.tables, 'cache', cache.sheets || []);
       lastSync = new Date(cache.at);
     }
     showError(`${e.message || e}${data ? '（前回取得したデータを表示中）' : ''}`);
@@ -157,12 +168,22 @@ function itemHTML(row, { showPart = false } = {}) {
   const chip = showPart
     ? `<button class="chip" data-part="${row.part}">${esc(row.cat || partLabel(row.part))}</button>`
     : `<span class="chip static">${esc(row.cat || '—')}</span>`;
+  const key = rowKey(row);
+  const tools = canWrite() && row._row
+    ? `<div class="item-tools"><button class="mini" data-edit="${esc(key)}">編集</button><button class="mini danger" data-del="${esc(key)}">削除</button></div>`
+    : '';
   return `<article class="item">
     <div class="item-head"><span class="item-title">${esc(row.date || '日付なし')}</span>${row.costText ? `<span class="badge">${esc(row.cost != null ? yen(row.cost) : row.costText)}</span>` : ''}</div>
     <p class="item-sub">${chip}</p>
-    ${kv ? `<dl class="kv">${kv}</dl>` : ''}${thumbs}
+    ${kv ? `<dl class="kv">${kv}</dl>` : ''}${thumbs}${tools}
   </article>`;
 }
+
+// ---- writing back (Apps Script web app, gas/Code.gs) ----
+const canWrite = () => !!(settings.gasUrl && settings.gasToken && dataSource && dataSource !== 'demo');
+const rowKey = (r) => `${r._row}@${r._sheet}`;
+const findRow = (key) => data?.rows.find((r) => rowKey(r) === key);
+const addButton = () => (canWrite() ? '<button class="btn add-btn" data-action="add">＋ 記録を追加</button>' : '');
 
 // ---- records are shown one year at a time; swipe left/right (or ‹ ›) to change the year ----
 let viewYear = null;
@@ -212,9 +233,27 @@ function openPart(id, { tab } = {}) {
   $('#panelTitle').textContent = partLabel(id);
   const cats = p ? p.cats.join('・') : 'どの部位にも当てはまらないカテゴリ';
   $('#panelSub').textContent = rows.length ? `${cats} ・ 全${rows.length}件` : cats;
-  $('#panelBody').innerHTML = rows.length
+  const back = FACE_PARTS.includes(id) ? '<button class="back-link" data-action="face">‹ 顔の部位を選ぶ</button>' : '';
+  $('#panelBody').innerHTML = back + addButton() + (rows.length
     ? yearBlock(rows)
-    : `<p class="empty">「${esc(cats)}」の記録はまだありません。<br>スプレッドシートのカテゴリ列に「${esc(p?.cats[0] || '')}」と入れると表示されます。</p>`;
+    : `<p class="empty">「${esc(cats)}」の記録はまだありません。<br>スプレッドシートのカテゴリ列に「${esc(p?.cats[0] || '')}」と入れると表示されます。</p>`);
+  showPanel();
+}
+
+// ---------- 顔: choose which part of the face ----------
+function openFace() {
+  currentView = { type: 'face', id: 'face' };
+  setActiveTab(null);
+  $('#panelTitle').textContent = '顔';
+  $('#panelSub').textContent = '記録を見る部位を選んでください';
+  $('#panelBody').innerHTML = `<section class="card face-choices">${FACE_PARTS.map((id) => {
+    const rs = data?.byPart[id] || [];
+    return `<button class="part-row" data-part="${id}">
+        <span class="pr-name"><b>${esc(partLabel(id))}</b><small>${esc(PARTS[id].cats.join('・'))}</small></span>
+        <span class="pr-last">${rs[0] ? `<b>${esc(ago(rs[0].dateObj) || rs[0].date)}</b><small>${esc(rs[0].date)}</small>` : '<small>記録なし</small>'}</span>
+        <span class="pr-count">${rs.length}件</span>
+      </button>`;
+  }).join('')}</section>`;
   showPanel();
 }
 
@@ -225,7 +264,7 @@ function openList() {
   const rows = data?.rows || [];
   $('#panelTitle').textContent = 'すべての記録';
   $('#panelSub').textContent = `全${rows.length}件 ・ 新しい順`;
-  $('#panelBody').innerHTML = rows.length ? yearBlock(rows, { showPart: true }) : '<p class="empty">記録がありません</p>';
+  $('#panelBody').innerHTML = addButton() + (rows.length ? yearBlock(rows, { showPart: true }) : '<p class="empty">記録がありません</p>');
   showPanel();
 }
 
@@ -276,7 +315,8 @@ function rerenderPanel({ keepScroll = true } = {}) {
   if (currentView.type === 'part') openPart(currentView.id, currentView);
   else if (currentView.type === 'all') openList();
   else if (currentView.type === 'summary') openSummary();
-  else return; // settings form: don't rebuild under the user's fingers
+  else if (currentView.type === 'face') openFace();
+  else return; // settings / record form: don't rebuild under the user's fingers
   if (keepScroll) body.scrollTop = top;
 }
 
@@ -285,6 +325,12 @@ $('#panelBody').addEventListener('click', (e) => {
   if (yb && !yb.disabled) { changeYear(yb.getAttribute('aria-label') === '古い年' ? 1 : -1); return; }
   const th = e.target.closest('.thumb');
   if (th) { openImage(th.dataset.img, th.dataset.link); return; }
+  if (e.target.closest('[data-edit]')) { const r = findRow(e.target.closest('[data-edit]').dataset.edit); if (r) openForm(r); return; }
+  if (e.target.closest('[data-del]')) { const r = findRow(e.target.closest('[data-del]').dataset.del); if (r) deleteRecord(r); return; }
+  const act = e.target.closest('[data-action]')?.dataset.action;
+  if (act === 'face') { viewer.select('face'); openFace(); return; }
+  if (act === 'add') { openForm(null); return; }
+  if (currentView?.type === 'form') return; // the form's own buttons are handled below
   const b = e.target.closest('[data-part]');
   if (!b) return;
   viewer.select(b.dataset.part === OTHER.id ? null : b.dataset.part);
@@ -294,6 +340,140 @@ $('#panelBody').addEventListener('click', (e) => {
 $('#panelBody').addEventListener('error', (e) => {
   if (e.target.tagName === 'IMG') e.target.closest('.thumb')?.classList.add('broken');
 }, true);
+
+// ---------- 記録の追加・編集・削除 (form → Apps Script → spreadsheet) ----------
+const FIELDS = [['date', '日時'], ['cat', 'カテゴリ'], ['place', '場所'], ['slot', '時間帯'], ['staff', '担当者'], ['costText', '料金'], ['rx', '調剤'], ['note', '特記事項']];
+const SLOTS = ['午前', '午後', '夕方', '夜'];
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => (d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '');
+function knownCats() {
+  const cats = [...Object.values(PARTS).flatMap((p) => p.cats)];
+  for (const r of data?.rows || []) if (r.cat && !cats.includes(r.cat)) cats.push(r.cat);
+  return cats;
+}
+
+function openForm(row) {
+  const back = currentView?.type === 'form' ? currentView.back : currentView;
+  currentView = { type: 'form', id: 'form', row, back };
+  const partId = back?.type === 'part' ? back.id : null;
+  const v = row
+    ? { date: ymd(row.dateObj), cat: row.cat, place: row.place, slot: row.slot, staff: row.staff, costText: row.costText, rx: row.rx, note: row.note }
+    : { date: ymd(new Date()), cat: PARTS[partId]?.cats[0] || '' };
+  const cats = knownCats();
+  const custom = v.cat && !cats.includes(v.cat);
+  const input = (k, extra = '') => `<input id="f_${k}" value="${esc(v[k] || '')}" ${extra}>`;
+  $('#panelTitle').textContent = row ? '記録を編集' : '記録を追加';
+  $('#panelSub').textContent = row ? `${row._sheet || '先頭'} シート ${row._row} 行目` : '日時の年のシートに追加されます';
+  $('#panelBody').innerHTML = `<form class="card rec-form" id="recForm" autocomplete="off">
+      <label class="field">日時<input type="date" id="f_date" value="${esc(v.date)}" required></label>
+      ${row && !row.dateObj && row.date ? `<p class="note">元の値：${esc(row.date)}</p>` : ''}
+      <label class="field">カテゴリ<select id="f_catSel">
+        <option value="">（選択）</option>
+        ${cats.map((c) => `<option ${c === v.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+        <option value="__custom" ${custom ? 'selected' : ''}>その他（自由入力）</option>
+      </select>
+      <input id="f_catText" value="${esc(custom ? v.cat : '')}" placeholder="カテゴリを入力" ${custom ? '' : 'hidden'}></label>
+      <label class="field">場所${input('place')}</label>
+      <label class="field">時間帯${input('slot', 'list="slotList"')}<datalist id="slotList">${SLOTS.map((x) => `<option value="${x}">`).join('')}</datalist></label>
+      <label class="field">担当者${input('staff')}</label>
+      <label class="field">料金${input('costText', 'inputmode="numeric" placeholder="例: 3200"')}</label>
+      <label class="field">調剤${input('rx', 'placeholder="例: サンプル薬局 ¥900"')}</label>
+      <label class="field">特記事項<textarea id="f_note" rows="3">${esc(v.note || '')}</textarea></label>
+      <div class="row-btns">
+        <button type="button" class="btn" data-form="cancel">キャンセル</button>
+        <button type="submit" class="btn primary">${row ? '保存' : '追加'}</button>
+      </div>
+    </form>`;
+  showPanel();
+}
+
+function formBack() {
+  const b = currentView?.back;
+  if (b?.type === 'part') openPart(b.id, b);
+  else if (b?.type === 'all') openList();
+  else if (b?.type === 'face') openFace();
+  else if (b?.type === 'summary') openSummary();
+  else closePanel();
+}
+
+$('#panelBody').addEventListener('change', (e) => {
+  if (e.target.id !== 'f_catSel') return;
+  const t = $('#f_catText');
+  t.hidden = e.target.value !== '__custom';
+  if (!t.hidden) t.focus();
+});
+$('#panelBody').addEventListener('click', (e) => {
+  if (e.target.closest('[data-form="cancel"]')) formBack();
+});
+$('#panelBody').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'recForm') return;
+  e.preventDefault();
+  const sel = $('#f_catSel').value;
+  const v = {
+    date: $('#f_date').value, cat: (sel === '__custom' ? $('#f_catText').value : sel).trim(),
+    place: $('#f_place').value.trim(), slot: $('#f_slot').value.trim(), staff: $('#f_staff').value.trim(),
+    costText: $('#f_costText').value.trim(), rx: $('#f_rx').value.trim(), note: $('#f_note').value.trim(),
+  };
+  if (!v.date) { toast('日時を入れてください'); return; }
+  if (!v.cat) { toast('カテゴリを選んでください'); return; }
+  const row = currentView.row;
+  const record = {};
+  for (const [k, label] of FIELDS) {
+    // edit: send only what changed, so untouched cells (time of day, formats, formulas) stay as they are
+    const before = row ? (k === 'date' ? ymd(row.dateObj) : row[k] || '') : '';
+    if (!row || v[k] !== before) record[label] = v[k];
+  }
+  if (row && !Object.keys(record).length) { formBack(); return; }
+  const year = +v.date.slice(0, 4);
+  const req = row
+    ? { action: 'update', sheet: row._sheet, row: row._row, record, expect: expectOf(row) }
+    : { action: 'add', record };
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = '送信中…';
+  const res = await post(req, { years: [year, row?.year].filter(Boolean) });
+  if (!res) { btn.disabled = false; btn.textContent = row ? '保存' : '追加'; return; }
+  if (res.skipped?.length) showError(`このシートには「${res.skipped.join('・')}」の列がないため、その項目は書き込まれませんでした。`);
+  viewYear = year;
+  formBack();
+  toast(row ? '保存しました' : '追加しました');
+});
+
+const expectOf = (row) => ({ date: ymd(row.dateObj) || undefined, cat: row.cat });
+async function deleteRecord(row) {
+  if (!confirm(`${row.date || '日付なし'}「${row.cat || '—'}」の記録を削除しますか？\nスプレッドシートの行（${row._sheet || '先頭'} シート ${row._row} 行目）も削除されます。`)) return;
+  const res = await post({ action: 'delete', sheet: row._sheet, row: row._row, expect: expectOf(row) }, { years: [row.year].filter(Boolean) });
+  if (res) { rerenderPanel(); toast('削除しました'); }
+}
+
+// POST to the Apps Script web app. A plain-text body keeps it a "simple" request (no CORS preflight).
+// On success the spreadsheet is read again so the list (and every record's row number) is up to date.
+let posting = false;
+async function post(req, { years = [] } = {}) {
+  if (posting) { toast('送信中です'); return null; }
+  posting = true;
+  toast('送信中…');
+  try {
+    let res;
+    try {
+      res = await fetch(settings.gasUrl, { method: 'POST', body: JSON.stringify({ token: settings.gasToken, ...req }) });
+    } catch {
+      throw new Error('Apps Script に接続できませんでした（URL・電波・デプロイのアクセス設定「全員」を確認してください）');
+    }
+    const j = await res.json().catch(() => null);
+    if (!j) throw new Error(`Apps Script の応答を読み取れませんでした（HTTP ${res.status}）`);
+    if (!j.ok) throw new Error(j.error || '不明なエラー');
+    $('#errorBanner').hidden = true;
+    await refresh({ years: years.length ? years : [new Date().getFullYear()] });
+    return j;
+  } catch (e) {
+    showError(`スプレッドシートに書き込めませんでした：${e.message || e}`);
+    toast('書き込みに失敗しました');
+    return null;
+  } finally {
+    posting = false;
+  }
+}
 
 function showPanel({ keepScroll = false } = {}) {
   $('#panel').classList.add('open');
@@ -345,8 +525,8 @@ $('#docClose').addEventListener('click', () => { $('#docViewer').hidden = true; 
 
 // ---------- 設定 tab ----------
 const ACCENTS = [['#4f8cff', 'ブルー'], ['#34c77b', 'グリーン'], ['#f5a524', 'オレンジ'], ['#a970ff', 'パープル'], ['#ff6b8b', 'ピンク'], ['#c9ced6', 'シルバー']];
-const SKINS = [['#f6d5bb', '明るめ'], ['#f0c4a0', '標準'], ['#d9a27c', '小麦色'], ['#a86f4c', '褐色']];
-const HAIRS = [['#2a1c15', '黒'], ['#5a3a24', 'ブラウン'], ['#a0703c', '明るい茶'], ['#d8c08a', 'ブロンド'], ['#9aa0a8', 'グレー']];
+const FIGURES = [['#dfe6ef', 'ホワイト'], ['#a9b6c6', 'グレー'], ['#8fb4f0', 'ブルー'], ['#9fd8bd', 'ミント'], ['#f2c9a8', 'ベージュ']];
+const HAIRS = [['#3a4252', 'チャコール'], ['#2a1c15', '黒'], ['#6b4a32', 'ブラウン'], ['#d8c08a', 'ブロンド'], ['#4f8cff', 'ブルー']];
 function openSettings() {
   currentView = { type: 'settings', id: 'settings' };
   setActiveTab('settings');
@@ -369,9 +549,8 @@ function openSettings() {
       <label class="row">自動で回転 <input type="checkbox" class="switch" data-pref="autoRotate" ${s.autoRotate ? 'checked' : ''}></label>
       <label class="row">回転の速さ <output>${s.rotateSpeed}</output>
         <input type="range" min="0.2" max="3" step="0.1" value="${s.rotateSpeed}" data-pref="rotateSpeed"></label>
-      <div class="row">肌の色${swatches('skin', SKINS)}</div>
+      <div class="row">からだの色${swatches('figure', FIGURES)}</div>
       <div class="row">髪の色${swatches('hair', HAIRS)}</div>
-      <label class="row">服の色 <input type="color" data-pref="shirt" value="${esc(s.shirt)}"></label>
     </section>
     <section class="card"><h3>データ</h3>
       <label class="field">スプレッドシートの URL<input type="url" id="setSheet" value="${esc(s.sheet)}" autocomplete="off"></label>
@@ -381,7 +560,15 @@ function openSettings() {
         <button class="btn primary" data-action="saveSheet">保存して読み込み</button>
         <button class="btn" data-action="refresh">今すぐ更新</button>
       </div>
-      <p class="note">最終更新：${esc(t)}<br>スプレッドシートは「リンクを知っている全員（閲覧者）」で共有してください。読み取りのみで、書き込みはしません。</p>
+      <p class="note">最終更新：${esc(t)}<br>スプレッドシートは「リンクを知っている全員（閲覧者）」で共有してください。</p>
+    </section>
+    <section class="card"><h3>スプレッドシートへの書き込み</h3>
+      <label class="field">Apps Script ウェブアプリの URL<input type="url" id="setGasUrl" value="${esc(s.gasUrl)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label class="field">トークン（Apps Script の TOKEN と同じ合言葉）<input id="setGasToken" value="${esc(s.gasToken)}" autocomplete="off"></label>
+      <div class="row-btns"><button class="btn primary" data-action="saveGas">保存</button><button class="btn" data-action="copyGas">スクリプトをコピー</button></div>
+      <p class="note">${s.gasUrl && s.gasToken ? '設定済み：記録の追加・編集・削除ができます。' : '未設定のあいだは読み取り専用です。'}<br>
+      ① 管理表で「拡張機能 → Apps Script」を開く ② コピーしたスクリプトを貼り付け、TOKEN を合言葉に変えて保存
+      ③「デプロイ → 新しいデプロイ → ウェブアプリ」（実行ユーザー：自分／アクセス：全員）④ 出てきた URL と合言葉をここに入れて保存</p>
     </section>`;
   showPanel();
 }
@@ -394,7 +581,7 @@ function applyPrefs() {
   root.dataset.font = settings.fontSize;
   viewer.setPrefs({ brightness: +settings.brightness, autoRotate: !!settings.autoRotate, rotateSpeed: +settings.rotateSpeed });
   viewer.setAccent(settings.accent);
-  viewer.setColors({ skin: settings.skin, hair: settings.hair, shirt: settings.shirt });
+  viewer.setColors({ figure: settings.figure, hair: settings.hair });
   $('#appName').textContent = settings.appName || DEFAULTS.appName;
 }
 
@@ -431,6 +618,18 @@ $('#panelBody').addEventListener('click', async (e) => {
     settings.sheetName = $('#setSheetName').value.trim();
     saveSettings(); data = null; $('#errorBanner').hidden = true;
     await refresh({ manual: true }); openSettings();
+  }
+  if (act === 'saveGas') {
+    settings.gasUrl = $('#setGasUrl').value.trim();
+    settings.gasToken = $('#setGasToken').value.trim();
+    saveSettings(); openSettings(); toast('保存しました');
+  }
+  if (act === 'copyGas') {
+    try {
+      const code = await (await fetch('gas/Code.gs', { cache: 'no-cache' })).text();
+      await navigator.clipboard.writeText(code);
+      toast('スクリプトをコピーしました');
+    } catch { window.open('gas/Code.gs', '_blank'); }
   }
 });
 $('#btnOpenSettings2').addEventListener('click', () => openSettings());

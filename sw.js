@@ -1,7 +1,7 @@
 // Network-first cache for the app shell so the app opens offline.
 // Spreadsheet requests (other origins) are never cached here; the app keeps its own copy.
 // the build number is replaced on every deploy, so each release gets a fresh cache
-const CACHE = 'selfcare-202611231742-icon';
+const CACHE = 'selfcare-202611231930-v2';
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'js/app.js', 'js/human.js', 'js/sheet.js', 'js/demo.js',
