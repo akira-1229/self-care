@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="セルフケア">
   <meta name="theme-color" content="#0b1220">
-  <meta name="app-build" content="202611232005-v5">
+  <meta name="app-build" content="202611242125-v6">
   <title>セルフケア</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/heart.svg" type="image/svg+xml">
@@ -44,9 +44,14 @@
           <h2 id="panelTitle"></h2>
           <p id="panelSub" class="sub"></p>
         </div>
-        <button id="btnClosePanel" class="icon-btn" aria-label="閉じる">
-          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-        </button>
+        <div class="head-btns">
+          <button id="btnAdd" class="icon-btn add-btn" aria-label="記録を追加" hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          </button>
+          <button id="btnClosePanel" class="icon-btn" aria-label="閉じる">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
       </div>
       <div id="panelBody" class="panel-body"></div>
     </section>
