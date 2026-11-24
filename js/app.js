@@ -183,7 +183,6 @@ function itemHTML(row, { showPart = false } = {}) {
 const canWrite = () => !!(settings.gasUrl && settings.gasToken && dataSource && dataSource !== 'demo');
 const rowKey = (r) => `${r._row}@${r._sheet}`;
 const findRow = (key) => data?.rows.find((r) => rowKey(r) === key);
-const addButton = () => (canWrite() ? '<button class="btn add-btn" data-action="add">＋ 記録を追加</button>' : '');
 
 // ---- records are shown one year at a time; swipe left/right (or ‹ ›) to change the year ----
 let viewYear = null;
@@ -234,7 +233,7 @@ function openPart(id, { tab } = {}) {
   const cats = p ? p.cats.join('・') : 'どの部位にも当てはまらないカテゴリ';
   $('#panelSub').textContent = rows.length ? `${cats} ・ 全${rows.length}件` : cats;
   const back = FACE_PARTS.includes(id) ? '<button class="back-link" data-action="face">‹ 顔の部位を選ぶ</button>' : '';
-  $('#panelBody').innerHTML = back + addButton() + (rows.length
+  $('#panelBody').innerHTML = back + (rows.length
     ? yearBlock(rows)
     : `<p class="empty">「${esc(cats)}」の記録はまだありません。<br>スプレッドシートのカテゴリ列に「${esc(p?.cats[0] || '')}」と入れると表示されます。</p>`);
   showPanel();
@@ -264,7 +263,7 @@ function openList() {
   const rows = data?.rows || [];
   $('#panelTitle').textContent = 'すべての記録';
   $('#panelSub').textContent = `全${rows.length}件 ・ 新しい順`;
-  $('#panelBody').innerHTML = addButton() + (rows.length ? yearBlock(rows, { showPart: true }) : '<p class="empty">記録がありません</p>');
+  $('#panelBody').innerHTML = (rows.length ? yearBlock(rows, { showPart: true }) : '<p class="empty">記録がありません</p>');
   showPanel();
 }
 
@@ -329,7 +328,6 @@ $('#panelBody').addEventListener('click', (e) => {
   if (e.target.closest('[data-del]')) { const r = findRow(e.target.closest('[data-del]').dataset.del); if (r) deleteRecord(r); return; }
   const act = e.target.closest('[data-action]')?.dataset.action;
   if (act === 'face') { viewer.select('face'); openFace(); return; }
-  if (act === 'add') { openForm(null); return; }
   if (currentView?.type === 'form') return; // the form's own buttons are handled below
   const b = e.target.closest('[data-part]');
   if (!b) return;
@@ -479,6 +477,7 @@ function showPanel({ keepScroll = false } = {}) {
   $('#panel').classList.add('open');
   $('#panel').setAttribute('aria-hidden', 'false');
   if (!keepScroll) $('#panelBody').scrollTop = 0;
+  syncAddBtn();
   requestAnimationFrame(() => viewer.setBottomInset($('#panel').offsetHeight));
 }
 function closePanel() {
@@ -488,8 +487,22 @@ function closePanel() {
   $('#panel').classList.remove('open');
   $('#panel').setAttribute('aria-hidden', 'true');
   viewer.setBottomInset(0);
+  syncAddBtn();
 }
 $('#btnClosePanel').addEventListener('click', closePanel);
+
+// header ＋ button: shown on record views (part / all / summary / face); hidden on form / settings / closed panel
+const ADD_VIEWS = ['part', 'all', 'summary', 'face'];
+function syncAddBtn() {
+  const open = $('#panel').classList.contains('open');
+  $('#btnAdd').hidden = !(open && ADD_VIEWS.includes(currentView?.type));
+}
+$('#btnAdd').addEventListener('click', () => {
+  if (canWrite()) { openForm(null); return; }
+  viewer.select(null);
+  openSettings();
+  showError('記録の追加には、設定タブで Apps Script のウェブアプリ URL と合言葉（トークン）の入力が必要です。');
+});
 
 // swipe left / right on the records to change the year
 (() => {
