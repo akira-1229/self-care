@@ -144,6 +144,8 @@ button { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .panel-head h2 { margin: 0; font-size: 19px; }
+.head-btns { display: flex; gap: 8px; }
+.add-btn { background: var(--accent); border-color: transparent; color: #fff; }
 .panel-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px 16px 20px; }
 
 .item {
@@ -328,7 +330,6 @@ input.switch:checked::after { transform: translateX(20px); }
 .swatches { flex-wrap: wrap; }
 
 /* ---- writing back: add / edit / delete ---- */
-.add-btn { width: 100%; margin: 0 0 10px; border-style: dashed; color: var(--fg); }
 .back-link { border: 0; background: none; color: var(--accent); font-size: 14px; font-weight: 600; padding: 4px 0 10px; cursor: pointer; }
 .item-tools { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .mini { min-height: 32px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--card-2); color: var(--fg); font-size: 13px; font-weight: 600; cursor: pointer; }
