@@ -169,8 +169,8 @@ function itemHTML(row, { showPart = false } = {}) {
     ? `<button class="chip" data-part="${row.part}">${esc(row.cat || partLabel(row.part))}</button>`
     : `<span class="chip static">${esc(row.cat || '—')}</span>`;
   const key = rowKey(row);
-  const tools = canWrite() && row._row
-    ? `<div class="item-tools"><button class="mini" data-edit="${esc(key)}">編集</button><button class="mini danger" data-del="${esc(key)}">削除</button></div>`
+  const tools = row._row
+    ? `<div class="item-tools"><button class="mini" data-edit="${esc(key)}">編集</button></div>`
     : '';
   return `<article class="item">
     <div class="item-head"><span class="item-title">${esc(row.date || '日付なし')}</span>${row.costText ? `<span class="badge">${esc(row.cost != null ? yen(row.cost) : row.costText)}</span>` : ''}</div>
@@ -181,6 +181,12 @@ function itemHTML(row, { showPart = false } = {}) {
 
 // ---- writing back (Apps Script web app, gas/Code.gs) ----
 const canWrite = () => !!(settings.gasUrl && settings.gasToken && dataSource && dataSource !== 'demo');
+// shown when 追加・編集 is tapped without the write settings: open the settings tab and explain
+function promptWriteSetup() {
+  viewer.select(null);
+  openSettings();
+  showError('記録の追加・編集には、設定タブで Apps Script のウェブアプリ URL と合言葉（トークン）の入力が必要です。');
+}
 const rowKey = (r) => `${r._row}@${r._sheet}`;
 const findRow = (key) => data?.rows.find((r) => rowKey(r) === key);
 
@@ -324,8 +330,7 @@ $('#panelBody').addEventListener('click', (e) => {
   if (yb && !yb.disabled) { changeYear(yb.getAttribute('aria-label') === '古い年' ? 1 : -1); return; }
   const th = e.target.closest('.thumb');
   if (th) { openImage(th.dataset.img, th.dataset.link); return; }
-  if (e.target.closest('[data-edit]')) { const r = findRow(e.target.closest('[data-edit]').dataset.edit); if (r) openForm(r); return; }
-  if (e.target.closest('[data-del]')) { const r = findRow(e.target.closest('[data-del]').dataset.del); if (r) deleteRecord(r); return; }
+  if (e.target.closest('[data-edit]')) { if (!canWrite()) { promptWriteSetup(); return; } const r = findRow(e.target.closest('[data-edit]').dataset.edit); if (r) openForm(r); return; }
   const act = e.target.closest('[data-action]')?.dataset.action;
   if (act === 'face') { viewer.select('face'); openFace(); return; }
   if (currentView?.type === 'form') return; // the form's own buttons are handled below
@@ -339,7 +344,7 @@ $('#panelBody').addEventListener('error', (e) => {
   if (e.target.tagName === 'IMG') e.target.closest('.thumb')?.classList.add('broken');
 }, true);
 
-// ---------- 記録の追加・編集・削除 (form → Apps Script → spreadsheet) ----------
+// ---------- 記録の追加・編集 (form → Apps Script → spreadsheet) ----------
 const FIELDS = [['date', '日時'], ['cat', 'カテゴリ'], ['place', '場所'], ['slot', '時間帯'], ['staff', '担当者'], ['costText', '料金'], ['rx', '調剤'], ['note', '特記事項']];
 const SLOTS = ['午前', '午後', '夕方', '夜'];
 const pad = (n) => String(n).padStart(2, '0');
@@ -438,11 +443,6 @@ $('#panelBody').addEventListener('submit', async (e) => {
 });
 
 const expectOf = (row) => ({ date: ymd(row.dateObj) || undefined, cat: row.cat });
-async function deleteRecord(row) {
-  if (!confirm(`${row.date || '日付なし'}「${row.cat || '—'}」の記録を削除しますか？\nスプレッドシートの行（${row._sheet || '先頭'} シート ${row._row} 行目）も削除されます。`)) return;
-  const res = await post({ action: 'delete', sheet: row._sheet, row: row._row, expect: expectOf(row) }, { years: [row.year].filter(Boolean) });
-  if (res) { rerenderPanel(); toast('削除しました'); }
-}
 
 // POST to the Apps Script web app. A plain-text body keeps it a "simple" request (no CORS preflight).
 // On success the spreadsheet is read again so the list (and every record's row number) is up to date.
@@ -499,9 +499,7 @@ function syncAddBtn() {
 }
 $('#btnAdd').addEventListener('click', () => {
   if (canWrite()) { openForm(null); return; }
-  viewer.select(null);
-  openSettings();
-  showError('記録の追加には、設定タブで Apps Script のウェブアプリ URL と合言葉（トークン）の入力が必要です。');
+  promptWriteSetup();
 });
 
 // swipe left / right on the records to change the year
@@ -579,7 +577,7 @@ function openSettings() {
       <label class="field">Apps Script ウェブアプリの URL<input type="url" id="setGasUrl" value="${esc(s.gasUrl)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
       <label class="field">トークン（Apps Script の TOKEN と同じ合言葉）<input id="setGasToken" value="${esc(s.gasToken)}" autocomplete="off"></label>
       <div class="row-btns"><button class="btn primary" data-action="saveGas">保存</button><button class="btn" data-action="copyGas">スクリプトをコピー</button></div>
-      <p class="note">${s.gasUrl && s.gasToken ? '設定済み：記録の追加・編集・削除ができます。' : '未設定のあいだは読み取り専用です。'}<br>
+      <p class="note">${s.gasUrl && s.gasToken ? '設定済み：記録の追加・編集ができます。' : '未設定のあいだは読み取り専用です。'}<br>
       ① 管理表で「拡張機能 → Apps Script」を開く ② コピーしたスクリプトを貼り付け、TOKEN を合言葉に変えて保存
       ③「デプロイ → 新しいデプロイ → ウェブアプリ」（実行ユーザー：自分／アクセス：全員）④ 出てきた URL と合言葉をここに入れて保存</p>
     </section>`;
